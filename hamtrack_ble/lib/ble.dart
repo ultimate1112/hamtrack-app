@@ -1,21 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-
-//import 'package:flutter_beacon/flutter_beacon.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'ble_settings.dart';
 import 'scanner.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-
-class BLEModel {
-  bool isEnabled;
-  bool forceBusy;
-
-  BLEModel({this.isEnabled=false, this.forceBusy:false});
-}
-
-
+/// Screen for BLE Functionality.
 class BLEScreen extends StatefulWidget {
   BLEScreen({Key key}) : super(key: key);
 
@@ -23,47 +11,45 @@ class BLEScreen extends StatefulWidget {
   _BLEScreenState createState() => _BLEScreenState();
 }
 
+/// Screen State for BLE Functionality.
 class _BLEScreenState extends State<BLEScreen> {
-  BLEModel model = BLEModel();   // Model of View.
-  List<BLEDevice> scanData = List<BLEDevice>();
-  Scanner scanner = Scanner();
-  StreamSubscription<List<BLEDevice>> subscription;
+  bool isEnabled = false;         // Is BLE enabled?
+  bool forceScanBusy = false;     // Is the forceScan button busy?
 
+  Scanner scanner = Scanner();    // Scanner instance.
+  List<BLEDevice> scanData = List<BLEDevice>(); // Current list of BLE Devices.
+  StreamSubscription<List<BLEDevice>> scanSub;
 
+  /// Initializer.
   @override
   void initState() {
     super.initState();
-    pullScanner();  // Initialize subscription.
-  }
-
-  @override
-  void dispose() {
-    subscription.cancel();
-    super.dispose();
+    initScanSub();      // Initialize subscription.
   }
 
   // Handles the 'Enable BLE' slider.
   void enableBLE(bool state) async {
     setState(() {
-      model.isEnabled = state;
+      isEnabled = state;
     });
 
-    if(model.isEnabled) {
-      await scanner.start();
+    if(this.isEnabled) {
+      await scanner.enable();
     } else {
-      await scanner.stop();
+      await scanner.disable();
     }
   }
 
+  /// Handle forceScan button.
   void forceScan() async {
     setState(() {
-      model.forceBusy = true;
+      forceScanBusy = true;
     });
 
-    await scanner.scan();
+    await scanner.startScan();
 
     setState(() {
-      model.forceBusy = false;
+      forceScanBusy = false;
     });
   }
 
@@ -74,15 +60,17 @@ class _BLEScreenState extends State<BLEScreen> {
       MaterialPageRoute(builder: (context) => BLESettingsScreen()),
     );
 
-    await scanner.refresh();  // If parameters changed, update scanner.
+    await scanner.refresh();
   }
 
-  void pullScanner() {
-    subscription = scanner.getStream().listen((data) {
+  /// Initialize scanner subscription.
+  void initScanSub() {
+    scanSub = scanner.getStream().listen((data) {
       setState(() {
         this.scanData = data;
       });
-      print("StreamDataReceived: " + data.length.toString());
+//TODO: Remove
+      //      print("StreamDataReceived: " + data.length.toString());
 
     }, onDone: () {
       print("Stream FINISHED.");
@@ -91,6 +79,8 @@ class _BLEScreenState extends State<BLEScreen> {
     });
   }
 
+
+  /// Colors for scanData.
   Color statusColor(int position) {
     Color c;
     if (position < -80) {
@@ -107,7 +97,6 @@ class _BLEScreenState extends State<BLEScreen> {
 
   // Visualise the data via the status widget.
   Widget statusWidget() {
-
     if((scanData.length ?? 0) <= 0) {
       return Expanded(
         child: Center(
@@ -130,7 +119,6 @@ class _BLEScreenState extends State<BLEScreen> {
         },
       ),
     );
-
   }
 
 
@@ -149,7 +137,7 @@ class _BLEScreenState extends State<BLEScreen> {
               // Enable Switch.
               ListTile(
                 leading: Switch(
-                  value: model.isEnabled,
+                  value: isEnabled,
                   onChanged: enableBLE,
                 ),
                 title: Text('Enable BLE'),
@@ -157,11 +145,11 @@ class _BLEScreenState extends State<BLEScreen> {
 
               // Settings.
               Container(
-                child: !model.isEnabled ? null : Column(
+                child: !isEnabled ? null : Column(
                   children: <Widget>[
                     ListTile(
                       title: RaisedButton(
-                        onPressed: model.forceBusy ? null : forceScan,
+                        onPressed: forceScanBusy ? null : forceScan,
                         child: Text('Force Update'),
                       ),
                     ),
@@ -176,7 +164,7 @@ class _BLEScreenState extends State<BLEScreen> {
 
               // Status Window
               Container(
-                child: !model.isEnabled ? null : statusWidget(),
+                child: !isEnabled ? null : statusWidget(),
               ),
 
             ],
@@ -187,4 +175,3 @@ class _BLEScreenState extends State<BLEScreen> {
   } // build
 
 }
-

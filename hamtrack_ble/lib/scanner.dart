@@ -1,26 +1,33 @@
 import 'dart:async';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'ble_settings.dart';
 import 'dart:math';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 //import 'package:flutter_beacon/flutter_beacon.dart';
 import 'package:flutter_blue/flutter_blue.dart';
+import 'ble_settings.dart';
 
+/// Model of a BLE Device.
 class BLEDevice {
+  //TODO:Add major and minor.
   String addr;
   int rssi;
 
   BLEDevice({this.addr="", this.rssi=0});
 }
 
+/// BLE Scanner class.
 class Scanner {
-  BLESettingsModel model = BLESettingsModel();
-  List<BLEDevice> scanData = List<BLEDevice>();
-  Timer autoScanTimer;
-  StreamController<List<BLEDevice>> controller = StreamController<List<BLEDevice>>();
+  bool isEnabled = false;
+  bool scanLock = false;
 
-  // Constructor.
+  BLESettingsModel model = BLESettingsModel();
+  StreamController<List<BLEDevice>> controller = StreamController<List<BLEDevice>>();
+  List<BLEDevice> scanData = List<BLEDevice>();
+  Timer autoScanTimer = Timer(Duration(seconds:0), () => {});
+
+  //TODO: Verify timer is actually cancelling.
+
+  /// Constructor.
   Scanner() {
     // Initialize List with 10 entries.
     for(int i = 0; i < 10; i++) {
@@ -28,129 +35,119 @@ class Scanner {
     }
   }
 
+  /// Get stream.
   getStream() {
     return controller.stream;
   }
 
-  // Start AutoSend.
-  Future<void> start() async {
-
-    await model.loadModel();
-    autoScanTimer = Timer.periodic(Duration(seconds: model.autoSendDuration), _startAutoSend);
+  // Start autoSend.
+  Future<void> enable() async {
+    isEnabled = true;
+    refresh();
   }
 
-  // Stop AutoSend.
-  Future<void> stop() async {
-    autoScanTimer.cancel();
+  Future<void> disable() async {
+    isEnabled = false;
+    refresh();
   }
 
   Future<void> refresh() async {
-    await _startAutoSend(autoScanTimer);
+    await model.loadModel();  // Pre-emptively load model.
+    startScan(callback: true);
   }
 
-  // Run checks on parameters before starting scan.
-  Future<void> _startAutoSend(Timer t) async {
-    // Check if parameters have changed.
+  /// Endpoint to start scan.
+  /// If callback is true, will only run if model.autoScan is enabled.
+  Future<void> startScan({callback=false}) async {
+
     if(!await model.verifyModel()) {
-      t.cancel();
-      start();
+      // Parameters have changed.
+      // model.verifyModel will fix internal issues.
+      startScan(callback: callback);   // Recall process.
       return;
     }
 
-    if(!model.autoSend) {
-      t.cancel();
+    if(!isEnabled) {
+      // BLE is not enabled.
+      autoScanTimer.cancel();
       return;
     }
+
+    if(callback && !model.autoScan) {
+      // AutoScan is not enabled. Skip if executed manually.
+      autoScanTimer.cancel();
+      return;
+    }
+
+    if(model.autoScan && (autoScanTimer == null || !autoScanTimer.isActive)) {
+      // Timer is not active. Reactivate.
+      autoScanTimer = Timer.periodic(
+          Duration(seconds: model.autoScanDuration),
+          (t) => {startScan(callback: true)});
+      // Continue, and run immediately.
+    }
+
+    // Execute BLE scan.
     await scan();
   }
 
-  // Execute a single scan.
+  /// Execute Scan.
   Future<void> scan() async {
-    // Check preferences.'
-    await queryBLE();
-
-    /*
-    var random = new Random();
-    scanData[0] = new BLEDevice(addr: "MM:MM:MM:SS:SS:SS", rssi: -random.nextInt(100));
-    scanData[1] = new BLEDevice(addr: "22:22:22:22:22:22", rssi: -random.nextInt(100));
-    scanData[2] = new BLEDevice(addr: "33:33:33:33:33:33", rssi: -random.nextInt(100));
-    scanData[3] = new BLEDevice(addr: "44:44:44:44:44:44", rssi: -random.nextInt(100));
-    scanData[4] = new BLEDevice(addr: "55:55:55:55:55:55", rssi: -random.nextInt(100));
-    scanData[5] = new BLEDevice(addr: "66:66:66:66:66:66", rssi: -random.nextInt(100));
-    scanData[6] = new BLEDevice(addr: "12:34:56:78:AB:CD", rssi: -random.nextInt(100));
-    scanData[7] = new BLEDevice(addr: "77:77:77:77:77:77", rssi: -random.nextInt(100));
-    scanData[8] = new BLEDevice(addr: "88:88:88:88:88:88", rssi: -random.nextInt(100));
-    scanData[9] = new BLEDevice(addr: "99:99:99:99:99:99", rssi: -random.nextInt(100));
-    */
-    //scanData.sort((a, b) => a.rssi.compareTo(b.rssi));
-    //controller.add(scanData);
-
-    return;
+    await queryBLE();   // Populate scanData.
+    //await sendResults();  // Send to server.
   }
 
 
   /// Perform a BLE query.
-  Future<int> queryBLE() async {
-    int status = -1; // Return Status
-    int response = 0;
-    print("Query BLE...");
+  Future<bool> queryBLE() async {
 
-    // Configure payload
-    //Map<int, Beacon> beaconData = await scanBeacons();
-    //String payload = constructPayload(beaconData);
+    // If locked, wait until lock is released.
+    // Timeout after 1 second.
+    if(scanLock) {
+      print("BLE Query is locked.");
+      bool timeout = false;
+      Timer(Duration(seconds: 1), () => {timeout = true});
 
-    FlutterBlue flutterBlue = FlutterBlue.instance;
-
-    // Start scanning
-    print('Start scan!');
-
-    // Listen to scan results
-    scanData = List<BLEDevice>();
-
-    flutterBlue.startScan(timeout: Duration(seconds: 2));
-    flutterBlue.scanResults.listen((results) {
-      // do something with scan results
-      for (ScanResult r in results) {
-        //r.advertisementData.manufacturerData[0x004C];
-        print('${r.device.name} found! rssi: ${r.rssi}');
-        scanData.add(BLEDevice(addr: "${r.device.id.toString()}", rssi: r.rssi));
-        //TODO: Figure out blocking here...
+      while(scanLock) {
+        if(timeout) {
+          print("BLE Query has timed out.");
+          return false;
+        }
       }
-    });
-    // Stop scanning
-    //flutterBlue.stopScan();
+      print("BLE Query is released.");
+    }
 
-    print('Finished scan!');
+    // Lock.
+    scanLock = true;
+
+    final FlutterBlue flutterBlue = FlutterBlue.instance;
+    scanData = List<BLEDevice>();   // New list for scanData.
+
+    // Start Scan.
+    print('Start Scan: ' + new DateTime.now().toString());
+    Future scanResult = flutterBlue.startScan(
+        scanMode: ScanMode.lowLatency,
+        timeout: Duration(seconds: 2));
+
+    // Collect Results.
+    List<ScanResult> res = await scanResult;
+    //TODO: Remove: flutterBlue.stopScan();
+
+    // Parse
+    for (ScanResult r in res) {
+      //r.advertisementData.manufacturerData[0x004C];
+      //print('${r.device.id.toString()} found! rssi: ${r.rssi}');
+      scanData.add(BLEDevice(addr: "${r.device.id.toString()}", rssi: r.rssi));
+    }
+
     // Send data to screen.
     scanData.sort((a, b) => a.rssi.compareTo(b.rssi));
     controller.add(scanData);
 
+    // Unlock.
+    scanLock = false;
 
-    //TODO: Fix BLE Code here...
-
-    //beaconData.forEach((k,v) => scanData.add(BLEDevice(addr: "${v.major}+${v.minor}", rssi: v.rssi)));
-
-
-
-
-
-
-
-    // Send the position to the server.
-    String payload = "ABC";
-    response = await sendBLEDatapoint(model.url, model.devId, payload);
-
-    // Check response.
-    if(response != 0) {
-      print("BLE: Failed to send.");
-      status = response; // Return http statusCode.
-
-    } else {
-      print("BLE: Successfully sent packet.");
-      status = 0;
-    }
-
-    return status;
+    return true;
   } /* END: queryBLE */
 
   /*

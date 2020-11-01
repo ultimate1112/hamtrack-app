@@ -24,21 +24,27 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
+  # Cupertino Icons font.
   cupertino_icons: ^0.1.3
 
+  # App Preference Storage.
   shared_preferences: ^0.5.12
+
+  # To retrieve device-specific info. (ie. Device UUID)
+  device_info: 0.4.2+8
+
+  # HTTP Library for sending calls to REST API
+  http: ^0.12.2
 
   # BLE Scanning for Beacons.
   flutter_beacon: ^0.3.0
   flutter_blue: ^0.7.2
 
+  # Toast / Alert Messages
+  fluttertoast: ^7.1.1
+
   # Notifications (without Firebase)
   flutter_local_notifications: ^2.0.1
-  http: ^0.12.2
-  device_info: ^0.4.2
-
 
 dev_dependencies:
   flutter_test:

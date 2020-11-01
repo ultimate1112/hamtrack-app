@@ -1,80 +1,92 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info/device_info.dart';
-import 'dart:io';
+import 'package:fluttertoast/fluttertoast.dart';
 
-
+/// Class to modify / read parameters for app.
 class BLESettingsModel {
-  int checkKey;
-  bool autoSend;
-  int autoSendDuration;
-  String devId;
-  String url;
+  int checksum;         // to check if sharedPreferences is enabled.
+  String devId;         // Unique Device Identifier.
+  String url;           // URL to send requests to.
+  bool autoScan;        // is autoScan enabled?
+  int autoScanDuration; // Duration of autoScan (seconds).
+  int temp;             // Temporary Value, multi-use.
 
-  // Constructor with default options.
+  /// Constructor, with default options.
   BLESettingsModel({
-    this.checkKey=9,
-    this.autoSend=false,
-    this.autoSendDuration=5,
+    this.checksum=9,
     this.devId="",
     this.url="https://hamtrack.xyz",
+    this.autoScan=false,
+    this.autoScanDuration=5,
+    this.temp=0,
   });
 
+  /// Get Unique Device Identifier. Also saves result into parameters.
+  /// Function is only compatible with Android and iOS.
   Future<String> getDeviceCode() async {
     final DeviceInfoPlugin deviceInfoPlugin = new DeviceInfoPlugin();
-    print('Fetching devID');
-
     if (Platform.isAndroid) {
+      // Android - Android_ID.
       AndroidDeviceInfo androidDeviceInfo = await deviceInfoPlugin.androidInfo;
-      return androidDeviceInfo.androidId;
+      this.devId = androidDeviceInfo.androidId;
     } else if (Platform.isIOS) {
+      // iOS - developer-specific UUID.
       IosDeviceInfo iosDeviceInfo = await deviceInfoPlugin.iosInfo;
-      return iosDeviceInfo.identifierForVendor;
+      this.devId = iosDeviceInfo.identifierForVendor;
     } else {
+      // Invalid device.
       print('Cannot detect platform.');
-      return "";
+      this.devId = "";
     }
+
+    return this.devId;
   }
 
+  /// Save parameters into storage.
   Future<void> saveModel() async {
-    SharedPreferences _prefs = await SharedPreferences.getInstance();
-    await _prefs.setInt('checkKey', checkKey);
-    await _prefs.setBool('autoSend', autoSend);
-    await _prefs.setInt('autoSendDuration', autoSendDuration);
-    await _prefs.setString('devId', devId);
-    await _prefs.setString('url', url);
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('checksum', this.checksum);
+    await prefs.setString('devId', this.devId);
+    await prefs.setString('url', this.url);
+    await prefs.setBool('autoScan', this.autoScan);
+    await prefs.setInt('autoScanDuration', this.autoScanDuration);
+    await prefs.setInt('temp', this.temp);
   }
 
+  /// Load parameters from storage.
+  /// If sharedPreferences isn't initialized, use defaults.
   Future<bool> loadModel() async {
-    SharedPreferences _prefs = await SharedPreferences.getInstance();
-    if(!_prefs.containsKey('checkKey')
-        || _prefs.getInt('checkKey') != checkKey) {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    if(!prefs.containsKey('checksum')
+        || prefs.getInt('checksum') != this.checksum) {
       // Initialize Shared Preferences.
-      print('Initializing shared_preferences...');
-      devId = await getDeviceCode();
-      await saveModel();
-
+      await getDeviceCode();
+      await saveModel();      // Save with current parameters.
       return false;
     } else {
       // Pull from Shared Preferences.
-      checkKey = _prefs.getInt('checkKey');
-      autoSend = _prefs.getBool('autoSend');
-      autoSendDuration = _prefs.getInt('autoSendDuration');
-      devId = _prefs.getString('devId');
-      url = _prefs.getString('url');
-
+      this.checksum = prefs.getInt('checkKey');
+      this.devId = prefs.getString('devId');
+      this.url = prefs.getString('url');
+      this.autoScan = prefs.getBool('autoScan');
+      this.autoScanDuration = prefs.getInt('autoScanDuration');
+      this.temp = prefs.getInt('temp');
       return true;
     }
   }
 
+  /// Verify parameters with sharedPreferences.
   Future<bool> verifyModel() async {
-    SharedPreferences _prefs = await SharedPreferences.getInstance();
-    if(_prefs.getInt('checkKey') == checkKey
-        && _prefs.getBool('autoSend') == autoSend
-        && _prefs.getInt('autoSendDuration') == autoSendDuration
-        && _prefs.getString('devId') == devId
-        && _prefs.getString('url') == url
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    if(prefs.getInt('checksum') == this.checksum
+        && prefs.getString('devId') == this.devId
+        && prefs.getString('url') == this.url
+        && prefs.getBool('autoScan') == this.autoScan
+        && prefs.getInt('autoScanDuration') == this.autoScanDuration
+        && prefs.getInt('temp') == this.temp
     ) {
       return true;
     }
@@ -83,6 +95,7 @@ class BLESettingsModel {
 }
 
 
+/// Screen to edit BLE parameters.
 class BLESettingsScreen extends StatefulWidget {
   BLESettingsScreen({Key key}) : super(key: key);
 
@@ -90,47 +103,65 @@ class BLESettingsScreen extends StatefulWidget {
   _BLESettingsScreenState createState() => _BLESettingsScreenState();
 }
 
+/// Screen state to edit BLE parameters.
 class _BLESettingsScreenState extends State<BLESettingsScreen> {
-  BLESettingsModel model = BLESettingsModel();  // Data for Screen.
-  Future<bool> isLoaded;  // Don't resolve until model is fetched.
-  // TextField.
+  BLESettingsModel model = BLESettingsModel();    // Data for Screen.
+  Future<bool> isLoaded;    // Don't resolve until model is fetched.
+  // For TextField.
   final GlobalKey<FormState> _formKey  = GlobalKey<FormState>();
   TextEditingController _controller = new TextEditingController();
-  bool editAPI = false;
+  bool editAPI = false;     // State of URL.
 
+
+  /// Load model on state initialization.
   void initState() {
     super.initState();
-
-    // Load the model.
     isLoaded = model.loadModel();
   }
 
-  // Handle 'AutoSend Slider'.
+  /// Handle 'AutoSend Slider'.
   void enableAutoSend(bool state) {
     setState(() {
-      model.autoSend = state;
+      model.autoScan = state;
     });
   }
 
-  // Handle 'AutoSend Dropdown'.
+  /// Handle 'AutoSend Dropdown'.
   void changeAutoSend(int value) {
     setState(() {
-      model.autoSendDuration = value;
-      model.autoSend = true;  // Turn on autoScan.
+      model.autoScanDuration = value;
+      model.autoScan = true;    // Turn on autoScan.
     });
   }
 
+  /// Close settings.
   void closeSettings({bool save=false}) async {
     if(save) {
       await model.saveModel();
       if(await model.verifyModel()) {
-        print('Saved to preferences.');
+        Fluttertoast.showToast(
+            msg: "Saved preferences.",
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.CENTER,
+            timeInSecForIosWeb: 1,
+            backgroundColor: Colors.green,
+            textColor: Colors.white,
+            fontSize: 16.0
+        );
       } else {
-        print('Failed to save to preferences.');
+        Fluttertoast.showToast(
+            msg: "Failed to save preferences.",
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.CENTER,
+            timeInSecForIosWeb: 1,
+            backgroundColor: Colors.red,
+            textColor: Colors.white,
+            fontSize: 16.0
+        );
       }
     }
 
-    Navigator.pop(context);
+    Navigator.pop(context);   // Exit screen.
   }
 
   @override
@@ -148,6 +179,8 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
     );
   }
 
+  /// Loading Screen Widget.
+  /// Displays loading-spinner until isLoaded is resolved.
   Widget loadingScreen() {
     return Scaffold(
       appBar: AppBar(
@@ -173,6 +206,8 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
     );
   }
 
+  /// Config screen.
+  /// View and edit various app parameters.
   Widget configScreen() {
     return Scaffold(
       appBar: AppBar(
@@ -198,12 +233,12 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
 
               ListTile(
                 leading: Switch(
-                  value: model.autoSend,
+                  value: model.autoScan,
                   onChanged: enableAutoSend,
                 ),
                 title: DropdownButton(
                   isExpanded: true,
-                  value: model.autoSendDuration,
+                  value: model.autoScanDuration,
                   items: [
                     DropdownMenuItem(
                       child: Text("2 seconds"),
@@ -250,7 +285,6 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
                       model.url = value;
                     },
                   ),
-
                   leading: !editAPI
                       ? IconButton(
                           icon: Icon(Icons.edit),
@@ -274,22 +308,14 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
                             });
                           },
                       )
-
                 ),
-
-
               ),
 
-
-
             ],
-
           ),
         ),
       ),
     );
-
   }
-
 
 }
