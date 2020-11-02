@@ -8,6 +8,17 @@ import 'dart:io';
 import 'package:flutter_blue/flutter_blue.dart';
 import 'ble_settings.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'dart:typed_data';
+
+int byteToInt8(int b) =>
+    new Uint8List.fromList([b]).buffer.asByteData().getInt8(0);
+
+int twoByteToInt16(int v1, int v2) =>
+    new Uint8List.fromList([v1, v2]).buffer.asByteData().getUint16(0);
+
+String byteListToHexString(List<int> bytes) => bytes
+    .map((i) => i.toRadixString(16).padLeft(2, '0'))
+    .reduce((a, b) => (a + b));
 
 
 /// Model of a BLE Device.
@@ -19,11 +30,32 @@ class BLEDevice {
   int minor;
 
   BLEDevice({this.addr="", this.rssi=0});
+
+  Map<String, dynamic> toJson() => {
+    'addr': this.addr,
+    'rssi': this.rssi.toString(),
+    'major': this.major.toString(),
+    'minor': this.minor.toString(),
+  };
+
 }
 
 class BLEData {
   String timestamp;
   List<BLEDevice> data;
+
+  BLEData({timestamp,data}) {
+    this.timestamp = timestamp ?? '';
+    this.data = data ?? List<BLEDevice>();
+  }
+
+  Map<String, dynamic> toJSON() {
+    List<Map> dataJson = (this.data == null) ? null : this.data.map((e) => e.toJson()).toList();
+    return {
+      'timestamp': this.timestamp,
+      'data': dataJson,
+    };
+  }
 }
 
 /// BLE Scanner class.
@@ -161,6 +193,17 @@ Scanner() {
       dev.rssi = r.rssi;
 //TODO: Build data from here.
 
+      if(
+r.advertisementData.manufacturerData.containsKey(0x004C)
+&& r.advertisementData.manufacturerData[0x004C].length >= 23
+&& (r.advertisementData.manufacturerData[0x004C][0] == 0x02 || r.advertisementData.manufacturerData[0x004C][1] == 0x15)
+      ) {
+        List<int> rawBytes = r.advertisementData.manufacturerData[0x004C];
+        //dev.uuid = byteListToHexString(rawBytes.sublist(2, 18));
+        dev.major = twoByteToInt16(rawBytes[18], rawBytes[19]);
+        dev.minor = twoByteToInt16(rawBytes[20], rawBytes[21]);
+      }
+
       scanData.data.add(dev);
     }
     scanData.data.sort((a, b) => a.rssi.compareTo(b.rssi)); // Sort by rssi.
@@ -172,12 +215,12 @@ Scanner() {
   Future<bool> sendToServer() async {
 
     // Process scanData into timestamp & string payload.
-    //TODO: FIX jsonEncode(scanData.data);
+    List<Map> dataJson = (scanData.data == null) ? null : scanData.data.map((e) => e.toJson()).toList();
     var data = {
       'tracker': model.devId,
       'timestamp': scanData.timestamp,
       'count': scanData.data.length.toString(),
-      'payload': '',
+      'payload': jsonEncode(dataJson),
     };
 
     // Send POST packet to server.
