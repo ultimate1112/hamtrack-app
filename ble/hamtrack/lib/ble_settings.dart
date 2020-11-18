@@ -108,35 +108,70 @@ class BLESettingsScreen extends StatefulWidget {
 class _BLESettingsScreenState extends State<BLESettingsScreen> {
   BLESettingsModel model = BLESettingsModel();    // Data for Screen.
   Future<bool> isLoaded;    // Don't resolve until model is fetched.
+
   // For TextField.
-  final GlobalKey<FormState> _formKey  = GlobalKey<FormState>();
-  TextEditingController _controller = new TextEditingController();
-  bool editAPI = false;     // State of URL.
+  TextEditingController _UrlController = TextEditingController();
 
 
   /// Load model on state initialization.
   void initState() {
     super.initState();
-    isLoaded = model.loadModel();
+    isLoaded = load();
   }
 
-  /// Handle 'AutoSend Slider'.
-  void enableAutoSend(bool state) {
+  Future<bool> load() async {
+    bool status = await model.loadModel();
+    _UrlController.text = model.url;
+    return status;
+  }
+
+  /// Handle 'AutoScan Slider'.
+  void _enableAutoScan(bool state) {
     setState(() {
       model.autoScan = state;
     });
   }
 
-  /// Handle 'AutoSend Dropdown'.
-  void changeAutoSend(int value) {
+  /// Handle 'AutoScan Dropdown'.
+  void _changeAutoScan(int value) {
     setState(() {
       model.autoScanDuration = value;
       model.autoScan = true;    // Turn on autoScan.
     });
   }
 
+  _editUrl(BuildContext context) async {
+    return showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: Text('TextField in Dialog'),
+            content: TextField(
+              controller: _UrlController,
+              decoration: InputDecoration(hintText: "TextField in Dialog"),
+            ),
+            actions: <Widget>[
+              new FlatButton(
+                child: new Text('Cancel'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+              ),
+              new FlatButton(
+                  child: Text('Save'),
+                  onPressed: () {
+                    model.url = _UrlController.text;
+                    Navigator.of(context).pop();
+                  }
+              ),
+            ],
+          );
+        }).then((_) => setState(() {}));
+  }
+
+
   /// Close settings.
-  void closeSettings({bool save=false}) async {
+  void _closeSettings({bool save=false}) async {
     if(save) {
       await model.saveModel();
       if(await model.verifyModel()) {
@@ -161,7 +196,6 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
         );
       }
     }
-
     Navigator.pop(context);   // Exit screen.
   }
 
@@ -215,9 +249,7 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
         title: Text('BLE Settings'),
       ),
       floatingActionButton:FloatingActionButton.extended(
-        onPressed: () {
-          closeSettings(save: true);
-        },
+        onPressed: () => _closeSettings(save: true),
         icon: Icon(Icons.save),
         label: Text("Save"),
       ),
@@ -228,14 +260,17 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
             children: <Widget>[
 
               ListTile(
-                leading: Icon(Icons.person),
+                leading: IconButton(
+                    icon: Icon(Icons.person),
+                    onPressed: () => null,
+                ),
                 title: Text(model.devId),
               ),
 
               ListTile(
                 leading: Switch(
                   value: model.autoScan,
-                  onChanged: enableAutoSend,
+                  onChanged: (value) => _enableAutoScan(value),
                 ),
                 title: DropdownButton(
                   isExpanded: true,
@@ -262,54 +297,16 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
                       value: 60,
                     ),
                   ],
-                  onChanged: changeAutoSend,
+                  onChanged: (value) => _changeAutoScan(value),
                 ),
               ),
 
-              Form(
-                key: _formKey,
-                child: ListTile(
-                    title: TextFormField(
-                      enabled: editAPI,
-                      decoration: InputDecoration(
-                        filled: true,
-                        labelText: 'URL',
-                      ),
-                      initialValue: model.url,
-                      keyboardType: TextInputType.url,
-                      validator: (String value) {
-                        if(value.isEmpty){
-                          return 'URL is required';
-                        }
-                      },
-                      onSaved: (String value){
-                        model.url = value;
-                      },
-                    ),
-                    leading: !editAPI
-                        ? IconButton(
-                      icon: Icon(Icons.edit),
-                      onPressed: () {
-                        setState(() {
-                          editAPI = true;
-                        });
-                      },
-                    )
-                        : IconButton(
-                      icon: Icon(Icons.assignment_turned_in),
-                      onPressed: () {
-                        if(!_formKey.currentState.validate()) {
-                          return;
-                        }
-                        _formKey.currentState.save();
-                        print(model.url);
-
-                        setState(() {
-                          editAPI = false;
-                        });
-                      },
-                    )
+              ListTile(
+                leading: IconButton(
+                  icon: Icon(Icons.edit),
+                  onPressed: () => _editUrl(context)
                 ),
+                title: Text(model.url),
               ),
 
             ],

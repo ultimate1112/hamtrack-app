@@ -3,6 +3,7 @@ import 'ble.dart';
 import 'ble_settings.dart';
 import 'dart:io';
 
+// Handle HTTP Connections Bad Certificate without failing.
 class MyHttpOverrides extends HttpOverrides{
   @override
   HttpClient createHttpClient(SecurityContext context){
@@ -14,6 +15,7 @@ class MyHttpOverrides extends HttpOverrides{
 // Root of application.
 void main() {
   HttpOverrides.global = new MyHttpOverrides();
+
   runApp(MaterialApp(
     title: 'HamTrack BLE',
     theme: ThemeData(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'ble_settings.dart';
 import 'scanner.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 /// Screen for BLE Functionality.
 class BLEScreen extends StatefulWidget {
@@ -71,13 +72,26 @@ class _BLEScreenState extends State<BLEScreen> {
         this.scanData = data.data;
         scanTime = data.timestamp;
       });
-//TODO: Remove
-      //      print("StreamDataReceived: " + data.length.toString());
-
     }, onDone: () {
-      print("Stream FINISHED.");
+      Fluttertoast.showToast(
+          msg: "Something bad has happened. Please Restart App.",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          fontSize: 16.0
+      );
     }, onError: (error) {
-      print("Stream ERROR.");
+      Fluttertoast.showToast(
+          msg: "Something bad has happened. Please Restart App.",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          fontSize: 16.0
+      );
     });
   }
 
