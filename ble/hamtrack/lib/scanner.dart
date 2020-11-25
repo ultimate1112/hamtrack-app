@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import 'ble_settings.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// Single BLE Device.
 /// Assumed that BLE Device follows the iBeacon Specification.
@@ -97,6 +98,19 @@ class Scanner {
 
   /// Check permissions before scanning.
   void checkBLEPermissions() async {
+
+    if (!await Permission.locationAlways.request().isGranted) {
+      Fluttertoast.showToast(
+          msg: "hamTrack may not operate properly without Always On Location Access. Requires this for BLE Scanning for uninterrupted results.",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          timeInSecForIosWeb: 5,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          fontSize: 16.0
+      );
+    }
+
     try {
       await flutterBeacon.initializeScanning;
       await flutterBeacon.initializeAndCheckScanning;
