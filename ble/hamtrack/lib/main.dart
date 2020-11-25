@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'ble.dart';
-import 'ble_settings.dart';
 import 'dart:io';
 
 // Handle HTTP Connections Bad Certificate without failing.

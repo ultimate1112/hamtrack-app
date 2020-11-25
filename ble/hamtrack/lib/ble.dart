@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'ble_settings.dart';
 import 'scanner.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 
 /// Screen for BLE Functionality.
 class BLEScreen extends StatefulWidget {
@@ -14,63 +15,71 @@ class BLEScreen extends StatefulWidget {
 
 /// Screen State for BLE Functionality.
 class _BLEScreenState extends State<BLEScreen> {
-  bool isEnabled = false;         // Is BLE enabled?
-  bool forceScanBusy = false;     // Is the forceScan button busy?
+  bool _isEnabled = false;         // Is BLE enabled?
+  bool _forceScanBusy = false;     // Is the forceScan button busy?
 
-  String scanTime = "none";
-  Scanner scanner = Scanner();    // Scanner instance.
-  List<BLEDevice> scanData = List<BLEDevice>(); // Current list of BLE Devices.
-  StreamSubscription<BLEData> scanSub;
+  // List of BLEDevices.
+  Scanner _scanner = Scanner();         // Scanner instance.
+  StreamSubscription<BLEData> _scanSub;  // Stream from Scanner.
+  BLEData _scanData = BLEData();
+  String _scanTime = "none";            // Last timestamp for BLEData.
 
-  /// Initializer.
+
+  /// Initialize Widget State.
   @override
   void initState() {
     super.initState();
-    initScanSub();      // Initialize subscription.
+    _initScanSub();      // Initialize subscription.
   }
 
   // Handles the 'Enable BLE' slider.
-  void enableBLE(bool state) async {
+  void _enableBLE(bool state) async {
     setState(() {
-      isEnabled = state;
+      _isEnabled = state;
     });
 
-    if(this.isEnabled) {
-      await scanner.enable();
+    // Enable / Disable Scanner instance.
+    if(_isEnabled) {
+      await _scanner.enable();
     } else {
-      await scanner.disable();
+      await _scanner.disable();
     }
   }
 
   /// Handle forceScan button.
-  void forceScan() async {
+  void _forceScan() async {
     setState(() {
-      forceScanBusy = true;
+      _forceScanBusy = true;
     });
 
-    await scanner.startScan();
+    // Wait for Scanner instance to complete.
+    await _scanner.startScan();
 
     setState(() {
-      forceScanBusy = false;
+      _forceScanBusy = false;
     });
   }
 
   // Handles the 'Settings' button.
-  void openBLESettings() async {
+  void _openBLESettings() async {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => BLESettingsScreen()),
     );
 
-    await scanner.refresh();
+    // Refresh Scanner with new model (stored in SharedPreferences).
+    await _scanner.refresh();
   }
 
   /// Initialize scanner subscription.
-  void initScanSub() {
-    scanSub = scanner.getStream().listen((data) {
+  void _initScanSub() {
+    _scanSub = _scanner.getStream().listen((data) {
       setState(() {
-        this.scanData = data.data;
-        scanTime = data.timestamp;
+        _scanData = data;
+
+        var time = DateTime.fromMillisecondsSinceEpoch(int.parse(data.timestamp) * 1000);
+        _scanTime = time.toString();
+        
       });
     }, onDone: () {
       Fluttertoast.showToast(
@@ -97,7 +106,7 @@ class _BLEScreenState extends State<BLEScreen> {
 
 
   /// Colors for scanData.
-  Color statusColor(int position) {
+  Color _statusColor(int position) {
     Color c;
     if (position < -80) {
       c = Colors.orange;
@@ -113,28 +122,32 @@ class _BLEScreenState extends State<BLEScreen> {
 
   // Visualise the data via the status widget.
   Widget statusWidget() {
-    if((scanData.length ?? 0) <= 0) {
+    if((_scanData.data.length ?? 0) > 0) {
+      return Expanded(
+        child: ListView.builder(
+          itemCount: _scanData.data.length,
+          itemBuilder: (context, index) {
+            return ListTile(
+              title: Text("Major: " + _scanData.data[index].major.toString() + " "
+                  + "Minor: " + _scanData.data[index].minor.toString()),
+              leading: CircleAvatar(
+                backgroundColor: _statusColor(_scanData.data[index].rssi),
+                child: Text(_scanData.data[index].rssi.toString()),
+              ),
+              trailing: Text(_scanData.data[index].accuracy.toStringAsFixed(2) + "m"),
+              subtitle: Text("MAC: " + _scanData.data[index].macAddr + " "
+              + "TxPower: " + _scanData.data[index].txPower.toString()),
+            );
+          },
+        ),
+      );
+    } else {
       return Expanded(
         child: Center(
           child: Text('No data.'),
         ),
       );
     }
-//TODO: Fix this i think...
-    return Expanded(
-      child: ListView.builder(
-        itemCount: scanData.length,
-        itemBuilder: (context, index) {
-          return ListTile(
-            title: Text(scanData[index].addr),
-            leading: CircleAvatar(
-              backgroundColor: statusColor(scanData[index].rssi),
-              child: Text(scanData[index].rssi.toString()),
-            ),
-          );
-        },
-      ),
-    );
   }
 
 
@@ -153,26 +166,26 @@ class _BLEScreenState extends State<BLEScreen> {
                 // Enable Switch.
                 ListTile(
                   leading: Switch(
-                    value: isEnabled,
-                    onChanged: enableBLE,
+                    value: _isEnabled,
+                    onChanged: _enableBLE,
                   ),
                   title: Text('Enable BLE'),
                 ),
 
                 // Settings.
                 Container(
-                  child: !isEnabled ? null : Column(
+                  child: !_isEnabled ? null : Column(
                     children: <Widget>[
                       ListTile(
                         title: RaisedButton(
-                          onPressed: forceScanBusy ? null : forceScan,
+                          onPressed: _forceScanBusy ? null : _forceScan,
                           child: Text('Force Update'),
                         ),
                       ),
                       ListTile(
                         title: Text('BLE Settings'),
                         trailing: Icon(Icons.keyboard_arrow_right),
-                        onTap: openBLESettings,
+                        onTap: _openBLESettings,
                       ),
                     ],
                   ),
@@ -180,12 +193,12 @@ class _BLEScreenState extends State<BLEScreen> {
 
 
                 Container(
-                  child: !isEnabled ? null : Text("Last Scan: $scanTime"),
+                  child: !_isEnabled ? null : Text("Last Scan: " + _scanTime),
                 ),
 
                 // Status Window
                 Container(
-                  child: !isEnabled ? null : statusWidget(),
+                  child: !_isEnabled ? null : statusWidget(),
                 ),
 
               ],

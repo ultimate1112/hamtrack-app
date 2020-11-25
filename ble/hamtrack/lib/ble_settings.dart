@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info/device_info.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+
 
 /// Class to modify / read parameters for app.
+///
+/// This contains 2 states,
+///   1. Only the local variables are initialized.
+///        Data can only be accessed by the local instance.
+///   2. local variables are equal to SharedPreferences.
+///        Data can be accessed by any call to this model. Requires loadModel()
+///        to initially be called.
 class BLESettingsModel {
   int checksum;         // to check if sharedPreferences is enabled.
   String devId;         // Unique Device Identifier.
@@ -28,6 +36,7 @@ class BLESettingsModel {
   /// Function is only compatible with Android and iOS.
   Future<String> getDeviceCode() async {
     final DeviceInfoPlugin deviceInfoPlugin = new DeviceInfoPlugin();
+
     if (Platform.isAndroid) {
       // Android - Android_ID.
       AndroidDeviceInfo androidDeviceInfo = await deviceInfoPlugin.androidInfo;
@@ -48,6 +57,7 @@ class BLESettingsModel {
   /// Save parameters into storage.
   Future<void> saveModel() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
+
     await prefs.setInt('checksum', this.checksum);
     await prefs.setString('devId', this.devId);
     await prefs.setString('url', this.url);
@@ -60,6 +70,7 @@ class BLESettingsModel {
   /// If sharedPreferences isn't initialized, use defaults.
   Future<bool> loadModel() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
+
     if(!prefs.containsKey('checksum')
         || prefs.getInt('checksum') != this.checksum) {
       // Initialize Shared Preferences.
@@ -82,16 +93,13 @@ class BLESettingsModel {
   /// Verify parameters with sharedPreferences.
   Future<bool> verifyModel() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    if(prefs.getInt('checksum') == this.checksum
+
+    return (prefs.getInt('checksum') == this.checksum
         && prefs.getString('devId') == this.devId
         && prefs.getString('url') == this.url
         && prefs.getBool('autoScan') == this.autoScan
         && prefs.getInt('autoScanDuration') == this.autoScanDuration
-        && prefs.getInt('temp') == this.temp
-    ) {
-      return true;
-    }
-    return false;
+        && prefs.getInt('temp') == this.temp);
   }
 }
 
@@ -106,75 +114,79 @@ class BLESettingsScreen extends StatefulWidget {
 
 /// Screen state to edit BLE parameters.
 class _BLESettingsScreenState extends State<BLESettingsScreen> {
-  BLESettingsModel model = BLESettingsModel();    // Data for Screen.
-  Future<bool> isLoaded;    // Don't resolve until model is fetched.
+  BLESettingsModel _model = BLESettingsModel();    // Data for Screen.
+  Future<bool> _isLoaded;    // Don't resolve until model is fetched.
+  TextEditingController _urlController = TextEditingController();
 
-  // For TextField.
-  TextEditingController _UrlController = TextEditingController();
-
-
-  /// Load model on state initialization.
+  /// Initialize Widget State.
+  @override
   void initState() {
     super.initState();
-    isLoaded = load();
+    _isLoaded = load();
   }
 
+  // Load required variables into State.
   Future<bool> load() async {
-    bool status = await model.loadModel();
-    _UrlController.text = model.url;
+    bool status = await _model.loadModel();   // Initialize model.
+    _urlController.text = _model.url;         // Retrieve url field.
+
     return status;
   }
 
   /// Handle 'AutoScan Slider'.
   void _enableAutoScan(bool state) {
     setState(() {
-      model.autoScan = state;
+      _model.autoScan = state;
     });
   }
 
   /// Handle 'AutoScan Dropdown'.
+  /// Will also turn on AutoScan functionality.
   void _changeAutoScan(int value) {
     setState(() {
-      model.autoScanDuration = value;
-      model.autoScan = true;    // Turn on autoScan.
+      _model.autoScanDuration = value;
+      _model.autoScan = true;
     });
   }
 
-  _editUrl(BuildContext context) async {
+  /// Edit url in AlertDialog.
+  Future<bool> _editUrl(BuildContext context) async {
     return showDialog(
         context: context,
+        barrierDismissible: false,
         builder: (context) {
           return AlertDialog(
-            title: Text('TextField in Dialog'),
+            title: Text('Edit url'),
             content: TextField(
-              controller: _UrlController,
-              decoration: InputDecoration(hintText: "TextField in Dialog"),
+              controller: _urlController,
+              decoration: InputDecoration(hintText: "url"),
             ),
             actions: <Widget>[
               new FlatButton(
                 child: new Text('Cancel'),
                 onPressed: () {
-                  Navigator.of(context).pop();
+                  Navigator.of(context).pop(false);
                 },
               ),
               new FlatButton(
                   child: Text('Save'),
                   onPressed: () {
-                    model.url = _UrlController.text;
-                    Navigator.of(context).pop();
+                    _model.url = _urlController.text;
+                    Navigator.of(context).pop(true);
                   }
               ),
             ],
           );
-        }).then((_) => setState(() {}));
+        });
   }
 
 
   /// Close settings.
   void _closeSettings({bool save=false}) async {
     if(save) {
-      await model.saveModel();
-      if(await model.verifyModel()) {
+      await _model.saveModel();
+
+      if(await _model.verifyModel()) {
         Fluttertoast.showToast(
             msg: "Saved preferences.",
             toastLength: Toast.LENGTH_SHORT,
@@ -196,14 +208,14 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
         );
       }
     }
-    Navigator.pop(context);   // Exit screen.
+    Navigator.pop(context);   // Exit BLE screen.
   }
 
   @override
   Widget build(BuildContext context) {
     // On first build, load preferences and resolve isLoaded.
     return FutureBuilder<bool>(
-      future: isLoaded,
+      future: _isLoaded,
       builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
         if (snapshot.connectionState == ConnectionState.done) {
           return configScreen();
@@ -264,17 +276,17 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
                     icon: Icon(Icons.person),
                     onPressed: () => null,
                 ),
-                title: Text(model.devId),
+                title: Text(_model.devId),
               ),
 
               ListTile(
                 leading: Switch(
-                  value: model.autoScan,
+                  value: _model.autoScan,
                   onChanged: (value) => _enableAutoScan(value),
                 ),
                 title: DropdownButton(
                   isExpanded: true,
-                  value: model.autoScanDuration,
+                  value: _model.autoScanDuration,
                   items: [
                     DropdownMenuItem(
                       child: Text("2 seconds"),
@@ -304,9 +316,12 @@ class _BLESettingsScreenState extends State<BLESettingsScreen> {
               ListTile(
                 leading: IconButton(
                   icon: Icon(Icons.edit),
-                  onPressed: () => _editUrl(context)
+                  onPressed: () async {
+                    await _editUrl(context);
+                    setState(() {});
+                  },
                 ),
-                title: Text(model.url),
+                title: Text(_model.url),
               ),
 
             ],

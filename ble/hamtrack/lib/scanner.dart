@@ -5,51 +5,72 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 
-import 'package:flutter_blue/flutter_blue.dart';
+import 'package:flutter_beacon/flutter_beacon.dart';
+import 'package:flutter/services.dart';
+import 'package:rxdart/rxdart.dart';
+
 import 'ble_settings.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'dart:typed_data';
 
-int byteToInt8(int b) =>
-    new Uint8List.fromList([b]).buffer.asByteData().getInt8(0);
-
-int twoByteToInt16(int v1, int v2) =>
-    new Uint8List.fromList([v1, v2]).buffer.asByteData().getUint16(0);
-
-String byteListToHexString(List<int> bytes) => bytes
-    .map((i) => i.toRadixString(16).padLeft(2, '0'))
-    .reduce((a, b) => (a + b));
-
-
-/// Model of a BLE Device.
+/// Single BLE Device.
+/// Assumed that BLE Device follows the iBeacon Specification.
 class BLEDevice {
-  //TODO:Add major and minor.
-  String addr;
-  int rssi;
-  int major;
-  int minor;
+  int major;        // iBeacon Major Id.
+  int minor;        // iBeacon Minor Id.
+  int rssi;         // RSSI Strength.
+  String macAddr;   // MAC Address of iBeacon.
+  double accuracy;  // Accuracy in metres.
+  int txPower;      // Transmission Power over 1m.
 
-  BLEDevice({this.addr="", this.rssi=0});
+  BLEDevice(this.major, this.minor, this.rssi, {this.macAddr, this.accuracy, this.txPower});
 
   Map<String, dynamic> toJson() => {
-    'addr': this.addr,
-    'rssi': this.rssi.toString(),
     'major': this.major.toString(),
     'minor': this.minor.toString(),
+    'rssi': this.rssi.toString(),
   };
-
 }
 
+/// Single Scan of BLE Devices.
 class BLEData {
   String timestamp;
   List<BLEDevice> data;
 
-  BLEData({timestamp,data}) {
+  BLEData({timestamp, data}) {
     this.timestamp = timestamp ?? '';
     this.data = data ?? List<BLEDevice>();
   }
 
+  //
+  String getTimestamp() {
+    return timestamp;
+  }
+
+  // Count.
+  String getCount() {
+    return data.length.toString();
+  }
+
+  // Payload.
+  // Format List(Map), ie. [{'major':"",'minor':"",'rssi':""},{...},...]
+  String getPayload() {
+    List<Map> bleDevices = List<Map>();
+
+    for(int i = 0; i < data.length; i++) {
+      Map<String, String> d = {
+        'major': data[i].major.toString(),
+        'minor': data[i].minor.toString(),
+        'rssi': data[i].rssi.toString(),
+      };
+      bleDevices.add(d);
+    }
+
+    return jsonEncode(bleDevices);
+  }
+
   Map<String, dynamic> toJSON() {
+    // Within 'data', convert BLEDevice objects to JSON objects.
     List<Map> dataJson = (this.data == null) ? null : this.data.map((e) => e.toJson()).toList();
     return {
       'timestamp': this.timestamp,
@@ -60,87 +81,117 @@ class BLEData {
 
 /// BLE Scanner class.
 class Scanner {
-  bool isEnabled = false;
-  bool scanLock = false;
+  // Input Parameters.
+  BLESettingsModel _model = BLESettingsModel();
 
-  BLESettingsModel model = BLESettingsModel();                                          // Input Parameters.
-  Timer autoScanTimer = Timer(Duration(seconds:0), () => {});                           // autoScan Periodic Timer.
-  List<ScanResult> rawData = List<ScanResult>();                                       // Raw BLE Scan Data.
-  DateTime scanTime = DateTime.now();                                                   // Timestamp of scan.
-  StreamController<BLEData> controller = StreamController<BLEData>();   // Output Stream Controller.
-  BLEData scanData = BLEData();
+  // Output Stream Controller.
+  StreamController<BLEData> _controller = StreamController<BLEData>();
 
-Scanner() {
+  bool _isEnabled = false;                // Enable / Disable AutoScan
+  Timer _autoScanTimer = Timer(Duration(seconds:0), () => {});  // autoScan Periodic Timer.
+  bool _scanLock = false;                 // Lock for scan.
+  BLEData _scanData = BLEData();          // Data of scan.
 
-}
 
   /// Get stream.
-  getStream() {
-    return controller.stream;
+  Stream<BLEData> getStream() {
+    return _controller.stream;
   }
 
-  // Enable autoScan.
+  /// Check permissions before scanning.
+  void checkBLEPermissions() async {
+    try {
+      await flutterBeacon.initializeScanning;
+      await flutterBeacon.initializeAndCheckScanning;
+
+    } on PlatformException catch(e) {
+      // Library failed to initialize, check code and message
+      Fluttertoast.showToast(
+          msg: "Unable to initialize BLE library.",
+          toastLength: Toast.LENGTH_SHORT,
+          gravity: ToastGravity.BOTTOM,
+          timeInSecForIosWeb: 1,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          fontSize: 16.0
+      );
+    }
+  }
+
+  /// Enable autoScan.
   Future<void> enable() async {
-    isEnabled = true;
+    await checkBLEPermissions();
+    _isEnabled = true;
     await refresh();
   }
 
   /// Disable autoScan.
   Future<void> disable() async {
-    isEnabled = false;
+    _isEnabled = false;
     await refresh();
   }
 
   /// Refresh with new parameters.
   Future<void> refresh() async {
-    await model.loadModel();  // Pre-emptively load model.
-    autoScanTimer.cancel();
-    await startScan(callback: true);
+    await _model.loadModel();         // Pre-emptively load model.
+
+    _autoScanTimer.cancel();          // Kill current timer.
+    await startScan(callback: true);  // Restart Scan.
   }
 
   /// Endpoint to start scan.
   /// If callback is true, will only run if model.autoScan is enabled.
   Future<void> startScan({callback=false}) async {
 
-    if(!await model.verifyModel()) {
+    if(!await _model.verifyModel()) {
       // Parameters have changed.
       // model.verifyModel will fix internal issues.
       await startScan(callback: callback);   // Recall process.
       return;
     }
 
-    if(!isEnabled) {
+    if(!_isEnabled) {
       // BLE is not enabled.
-      autoScanTimer.cancel();
+      _autoScanTimer.cancel();
       return;
     }
 
-    if(callback && !model.autoScan) {
+    if(callback && !_model.autoScan) {
       // AutoScan is not enabled. Skip if executed manually.
-      autoScanTimer.cancel();
+      _autoScanTimer.cancel();
       return;
     }
 
-    if(model.autoScan && (autoScanTimer == null || !autoScanTimer.isActive)) {
+    if(_model.autoScan
+        && (_autoScanTimer == null || !_autoScanTimer.isActive)) {
       // Timer is not active. Reactivate.
-      autoScanTimer = Timer.periodic(
-          Duration(seconds: model.autoScanDuration),
+      _autoScanTimer = Timer.periodic(
+          Duration(seconds: _model.autoScanDuration),
           (t) => {startScan(callback: true)});
       // Continue, and run immediately.
     }
 
     // Execute BLE scan.
-    await scan();
+    await _process();
   }
 
 
   /// Scan.
-  Future<void> scan() async {
-    if(!await queryBLE()) {
+  Future<void> _process() async {
+
+    // Execute Scan for BLE Devices..
+    if(!await _queryBLE()) {
+      // Failed to scan. Exit Scan.
       return;
     }
-    processBLE();
-    if(!await sendToServer()) {
+
+    if(_scanData.data.length <= 0) {
+      return;
+    }
+
+    // Send Scan Data to Server.
+    if(!await _queryServer()) {
+      // Failed to send to server. Alert user.
       Fluttertoast.showToast(
           msg: "Failed to send to server.",
           toastLength: Toast.LENGTH_SHORT,
@@ -153,213 +204,108 @@ Scanner() {
       return;
     }
 
+    // Finished Scan.
+    return;
   }
 
   /// Perform a BLE query.
-  /// returns false if could not scan, true if successfully scanned.
-  Future<bool> queryBLE() async {
-    if(scanLock) {
+  /// Also sends scan data onto scan stream.
+  ///   Returns false if could not scan, true if successful.
+  Future<bool> _queryBLE() async {
+    if(_scanLock) {
       // Existing scan is already running. Skip.
-      print('SKIPPPPPPPPPPPPPPPPPPPPPPPPP');
+      print('Existing Scan Process. Skip.');
       return false;   // Unable to scan.
     }
-    scanLock = true;  // Lock.
+    _scanLock = true;   // Lock.
 
-    // Initialize required variables.
-    final FlutterBlue flutterBlue = FlutterBlue.instance;
-    scanTime = new DateTime.now();
+    // init variables.
+    _scanData = BLEData();
 
-    // Start Scan. Will stop scan after timeout.
-    Future scanResult = flutterBlue.startScan(
-        scanMode: ScanMode.lowLatency,
-        timeout: Duration(seconds: 2));
+    // Setup iBeacon Regions. Required for iOS.
+    final regions = <Region>[];
+    if (Platform.isIOS) {
+      // Default iBeacon Regions.
+      regions.add(Region(
+          identifier: 'Radius Networks 2F234454',
+          proximityUUID: '2F234454-CF6D-4A0F-ADF2-F4911BA9FFA6'));
+      regions.add(Region(
+          identifier: 'Apple AirLocate E2C56DB5',
+          proximityUUID: 'E2C56DB5-DFFB-48D2-B060-D0F5A71096E0'));
+      regions.add(Region(
+          identifier: 'Apple AirLocate 5A4BCFCE',
+          proximityUUID: '5A4BCFCE-174E-4BAC-A814-092E77F6B7E5'));
+      regions.add(Region(
+          identifier: 'Apple AirLocate 74278BDA',
+          proximityUUID: '74278BDA-B644-4520-8f0C-720EAF059935'));
+      regions.add(Region(
+          identifier: 'Null iBeacon',
+          proximityUUID: '00000000-0000-0000-0000-000000000000'));
+      regions.add(Region(
+          identifier: 'RedBear Labs AFFFFFF',
+          proximityUUID: '5AFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF'));
+      regions.add(Region(
+          identifier: 'TwoCanoes 92AB49BE',
+          proximityUUID: '92AB49BE-4127-42F4-B532-90FAF1E26491'));
+      regions.add(Region(
+          identifier: 'Estimote B9407F30',
+          proximityUUID: 'B9407F30-F5F8-466E-AFF9-25556B57FE6D'));
+      regions.add(Region(
+          identifier: 'Radius Networks 52414449',
+          proximityUUID: '52414449-5553-4E45-5457-4F524B53434F'));
+      regions.add(Region(
+          identifier: 'Kontakt',
+          proximityUUID: 'F7826DA6-4FA2-4E98-8024-BC5B71E0893E'));
+    } else {
+      regions.add(Region(identifier: 'com.beacon'));  // Catch all iBeacons.
+    }
 
-    // Collect Results.
-    rawData = await scanResult;
+    // Start BLE Scan.
+    RangingResult res = await flutterBeacon.ranging(regions).first;
 
-    scanLock = false; // Unlock
+    _scanData.timestamp = (DateTime.now().millisecondsSinceEpoch / 1000).round().toString(); // Record timestamp.
+
+    res.beacons.forEach((device) {
+      _scanData.data.add(
+          BLEDevice(device.major, device.minor, device.rssi,
+              macAddr: device.macAddress, accuracy: device.accuracy, txPower: device.txPower)
+      );
+    });
+    _scanData.data.sort((a, b) => b.rssi.compareTo(a.rssi));  // Sort by RSSI.
+
+    // Send onto Stream
+    _controller.add(_scanData);       // Send onto Stream.
+
+    _scanLock = false;    // Unlock
     return true;      // Successfully scanned.
   } /* END: queryBLE */
 
-  bool processBLE() {
-    scanData = new BLEData();
 
-    scanData.timestamp = scanTime.toString(); // Timestamp of Data.
-    scanData.data = new List<BLEDevice>();    // BLE Data.
-    BLEDevice dev;
-    for(ScanResult r in rawData) {
-      dev = new BLEDevice();
-      dev.addr = r.device.id.toString();
-      dev.rssi = r.rssi;
-//TODO: Build data from here.
+  Future<bool> _queryServer() async {
 
-      if(
-r.advertisementData.manufacturerData.containsKey(0x004C)
-&& r.advertisementData.manufacturerData[0x004C].length >= 23
-&& (r.advertisementData.manufacturerData[0x004C][0] == 0x02 || r.advertisementData.manufacturerData[0x004C][1] == 0x15)
-      ) {
-        List<int> rawBytes = r.advertisementData.manufacturerData[0x004C];
-        //dev.uuid = byteListToHexString(rawBytes.sublist(2, 18));
-        dev.major = twoByteToInt16(rawBytes[18], rawBytes[19]);
-        dev.minor = twoByteToInt16(rawBytes[20], rawBytes[21]);
-      }
-
-      scanData.data.add(dev);
-    }
-    scanData.data.sort((a, b) => a.rssi.compareTo(b.rssi)); // Sort by rssi.
-
-    controller.add(scanData);
-    return true;
-  }
-
-  Future<bool> sendToServer() async {
-
-    // Process scanData into timestamp & string payload.
-    List<Map> dataJson = (scanData.data == null) ? null : scanData.data.map((e) => e.toJson()).toList();
     var data = {
-      'tracker': model.devId,
-      'timestamp': scanData.timestamp,
-      'count': scanData.data.length.toString(),
-      'payload': jsonEncode(dataJson),
+      'tracker': _model.devId,
+      'timestamp': _scanData.getTimestamp(),
+      'count': _scanData.getCount(),
+      'payload': _scanData.getPayload(),
     };
 
     // Send POST packet to server.
-    http.Response response = await http.post(model.url, body: data);
+    //TODO: Catch Exception Properly.
+    try {
+      http.Response response = await http.post(_model.url, body: data);
 
-    // Check if request was successful.
-    if(response.statusCode != 200) {
-      print("Error sending to server. [HTTP Code "+ response.statusCode.toString() +"]");
+      // Check if request was successful.
+      if(response.statusCode != 200) {
+        print("Error sending to server. [HTTP Code "+ response.statusCode.toString() +"]");
+        return false;
+      }
+    } catch(e) {
       return false;
     }
 
     return true;
   }
-
-
-
-
-
-
-  /*
-  String constructPayload(Map<int, Beacon> beaconData) {
-    Map<String, int> payload = {};
-    String payloadEncoded = "";
-    String id = "";
-    int rssi = 0;
-
-    beaconData.forEach((k,v) {
-      id = "${v.major},${v.minor}";
-      rssi = v.rssi;
-      payload.addAll({id: rssi});
-    });
-
-    payloadEncoded = jsonEncode(payload);
-
-    return payloadEncoded;
-  }
-
-  /// Scan for BLE Beacons
-  Future<Map<int, Beacon>> scanBeacons() async {
-    Map<int, Beacon> beaconData = {};
-    int beaconNumber = 0;
-
-    // Just in case permissions aren't granted yet.
-    await flutterBeacon.initializeAndCheckScanning;
-
-    final regions = <Region>[];
-    /*
-    if (Platform.isIOS) {
-      // iOS platform, at least set identifier and proximityUUID for region scanning
-      regions.add(Region(
-          identifier: 'Kontakt',
-          proximityUUID: 'F7826DA6-4FA2-4E98-8024-BC5B71E0893E'));
-    } else {
-      // android platform, it can ranging out of beacon that filter all of Proximity UUID
-      regions.add(Region(identifier: 'com.beacon'));
-    }
-    */
-    regions.add(Region(identifier: 'com.beacon'));
-
-    print("BLE: Start Scan");
-
-    // Initialize scan as Ranging mode.
-    _beaconStream = flutterBeacon.ranging(regions);
-
-    // Timeout for scanning.
-    bool timeout = false;
-    Future<void> to = Future.delayed(const Duration(seconds: 5))
-        .whenComplete(() {
-      timeout = true;
-    });
-
-    // Scan and process beacons. Stream should run every 1 second.
-    await for(RangingResult result in _beaconStream) {
-
-      // Collect iBeacon data.
-      if(result.beacons.isNotEmpty) {
-
-        for(Beacon x in result.beacons) {
-
-          // Beacon.hashCode is region + major + minor
-          if(beaconData.containsKey(x.hashCode)) {
-            // Data already exists, so update.
-            beaconData.update(x.hashCode, (v) => x);
-            beaconNumber++;
-          } else {
-            // Data doesn't exist, so add.
-            beaconData.addAll({x.hashCode: x});
-            print("${x.major},${x.minor}=${x.rssi}");
-          }
-
-        }
-
-        // Check if we have too much data.
-        if(beaconNumber >= 15) {
-          break;
-        }
-
-      } /* END: if(result.beacons.isNotEmpty) */
-
-      // Check if timeout.
-      if(timeout == true) {
-        break;
-      }
-
-    } // END: await for
-
-    print("BLE: Scan Finished");
-
-    return beaconData;
-  } // scanBeacons
-*/
-
-  /// Send a BLE datapoint (string) to the server,
-  ///   then returns a http.Response as a Future.
-  Future<int> sendBLEDatapoint(String url, String deviceCode, String payload
-      ) async {
-    int status = 0;
-
-    // Construct POST packet.
-    var data = {
-      'tracker': deviceCode,
-      'payload': payload,
-    };
-
-    // Send POST packet.
-    http.Response response = await http.post(url, body: data);
-
-    // Check if request was successful.
-    if(response.statusCode != 200) {
-      status = response.statusCode;
-    } else {
-      status = 0;
-    }
-
-    return status;
-  } /* END: sendBLEDatapoint */
-
-
-
 
 
 }

@@ -46,6 +46,11 @@ dependencies:
   flutter_local_notifications: ^2.0.1
 
 
+  flutter_beacon: ^0.3.0
+
+  rxdart: ^0.24.1
+
+
 
 dev_dependencies:
   flutter_test:
