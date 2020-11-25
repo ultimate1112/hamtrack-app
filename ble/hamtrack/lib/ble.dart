@@ -155,7 +155,7 @@ class _BLEScreenState extends State<BLEScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
-          title: Text('HamTrack BLE'),
+          title: Text('hamTrack BLE'),
         ),
         body: Padding(
           padding: const EdgeInsets.all(8),

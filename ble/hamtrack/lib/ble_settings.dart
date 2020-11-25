@@ -26,7 +26,7 @@ class BLESettingsModel {
   BLESettingsModel({
     this.checksum=9,
     this.devId="",
-    this.url="https://app.hamtrack.xyz",
+    this.url="https://app.hamtrack.xyz/ble",
     this.autoScan=false,
     this.autoScanDuration=5,
     this.temp=0,

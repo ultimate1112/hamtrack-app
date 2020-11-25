@@ -1,5 +1,5 @@
-name: hamtrack
-description: HamTrack Monitoring App
+name: hamTrack
+description: hamTrack Monitoring App
 
 # The following line prevents the package from being accidentally published to
 # pub.dev using `pub publish`. This is preferred for private packages.
@@ -37,7 +37,8 @@ dependencies:
   http: ^0.12.2
 
   # BLE Scanning for Beacons.
-  flutter_blue: ^0.7.2
+  flutter_beacon: ^0.3.0
+  # OLD LIBRARY: flutter_blue: ^0.7.2
 
   # Toast / Alert Messages
   fluttertoast: ^7.1.1
@@ -45,11 +46,8 @@ dependencies:
   # Notifications (without Firebase)
   flutter_local_notifications: ^2.0.1
 
-
-  flutter_beacon: ^0.3.0
-
+  # Additional functionality to inbuilt Stream.
   rxdart: ^0.24.1
-
 
 
 dev_dependencies:

@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:math';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 
 import 'package:flutter_beacon/flutter_beacon.dart';
 import 'package:flutter/services.dart';
-import 'package:rxdart/rxdart.dart';
 
 import 'ble_settings.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'dart:typed_data';
 
 /// Single BLE Device.
 /// Assumed that BLE Device follows the iBeacon Specification.

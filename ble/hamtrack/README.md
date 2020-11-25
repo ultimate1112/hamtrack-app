@@ -1,6 +1,6 @@
-# hamtrack
+# hamTrack
 
-HamTrack Monitoring App
+hamTrack Monitoring App
 
 ## Getting Started
 

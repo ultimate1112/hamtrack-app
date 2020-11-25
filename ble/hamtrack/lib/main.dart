@@ -16,7 +16,7 @@ void main() {
   HttpOverrides.global = new MyHttpOverrides();
 
   runApp(MaterialApp(
-    title: 'HamTrack BLE',
+    title: 'hamTrack BLE',
     theme: ThemeData(
       primarySwatch: Colors.blue,
       visualDensity: VisualDensity.adaptivePlatformDensity,
