@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:wakelock/wakelock.dart';
 import 'ble_settings.dart';
 import 'scanner.dart';
 
@@ -21,7 +22,6 @@ class _BLEScreenState extends State<BLEScreen> {
 
   // List of BLEDevices.
   Scanner _scanner = Scanner();         // Scanner instance.
-  StreamSubscription<BLEData> _scanSub;  // Stream from Scanner.
   BLEData _scanData = BLEData();
   String _scanTime = "none";            // Last timestamp for BLEData.
 
@@ -42,8 +42,10 @@ class _BLEScreenState extends State<BLEScreen> {
     // Enable / Disable Scanner instance.
     if(_isEnabled) {
       await _scanner.enable();
+      Wakelock.enable();
     } else {
       await _scanner.disable();
+      Wakelock.disable();
     }
   }
 
@@ -74,7 +76,7 @@ class _BLEScreenState extends State<BLEScreen> {
 
   /// Initialize scanner subscription.
   void _initScanSub() {
-    _scanSub = _scanner.getStream().listen((data) {
+    _scanner.getStream().listen((data) {
       setState(() {
         _scanData = data;
 
@@ -136,8 +138,6 @@ class _BLEScreenState extends State<BLEScreen> {
                 child: Text(_scanData.data[index].rssi.toString()),
               ),
               trailing: Text(_scanData.data[index].accuracy.toStringAsFixed(2) + "m"),
-              subtitle: Text("MAC: " + _scanData.data[index].macAddr + " "
-              + "TxPower: " + _scanData.data[index].txPower.toString()),
             );
           },
         ),

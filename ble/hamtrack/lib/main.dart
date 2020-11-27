@@ -12,7 +12,7 @@ class MyHttpOverrides extends HttpOverrides{
 }
 
 // Root of application.
-void main() {
+void main() async {
   HttpOverrides.global = new MyHttpOverrides();
 
   runApp(MaterialApp(
@@ -28,4 +28,5 @@ void main() {
       '/': (context) => BLEScreen(),
     },
   ));
+
 }

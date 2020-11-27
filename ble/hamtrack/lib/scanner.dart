@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'dart:io';
-
-import 'package:flutter_beacon/flutter_beacon.dart';
-import 'package:flutter/services.dart';
-
-import 'ble_settings.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_beacon/flutter_beacon.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'ble_settings.dart';
 
 /// Single BLE Device.
 /// Assumed that BLE Device follows the iBeacon Specification.
@@ -90,6 +87,7 @@ class Scanner {
   bool _scanLock = false;                 // Lock for scan.
   BLEData _scanData = BLEData();          // Data of scan.
 
+  bool _isNew = true;
 
   /// Get stream.
   Stream<BLEData> getStream() {
@@ -112,10 +110,13 @@ class Scanner {
     }
 
     try {
-      await flutterBeacon.initializeScanning;
-      await flutterBeacon.initializeAndCheckScanning;
+      if(_isNew) {
+        await flutterBeacon.initializeAndCheckScanning;
+        _isNew = false;
+      }
+      //await flutterBeacon.initializeAndCheckScanning;
 
-    } on PlatformException catch(e) {
+    } catch(e) {
       // Library failed to initialize, check code and message
       Fluttertoast.showToast(
           msg: "Unable to initialize BLE library.",
@@ -237,6 +238,7 @@ class Scanner {
     final regions = <Region>[];
     if (Platform.isIOS) {
       // Default iBeacon Regions.
+/*
       regions.add(Region(
           identifier: 'Radius Networks 2F234454',
           proximityUUID: '2F234454-CF6D-4A0F-ADF2-F4911BA9FFA6'));
@@ -249,6 +251,8 @@ class Scanner {
       regions.add(Region(
           identifier: 'Apple AirLocate 74278BDA',
           proximityUUID: '74278BDA-B644-4520-8f0C-720EAF059935'));
+*/
+      /*
       regions.add(Region(
           identifier: 'Null iBeacon',
           proximityUUID: '00000000-0000-0000-0000-000000000000'));
@@ -264,16 +268,19 @@ class Scanner {
       regions.add(Region(
           identifier: 'Radius Networks 52414449',
           proximityUUID: '52414449-5553-4E45-5457-4F524B53434F'));
+      */
       regions.add(Region(
           identifier: 'Kontakt',
           proximityUUID: 'F7826DA6-4FA2-4E98-8024-BC5B71E0893E'));
+      regions.add(Region(
+          identifier: 'macOS Beacon App',
+          proximityUUID: 'E2C56DB5-DFFB-48D2-B060-D0F5A71096E0'));
     } else {
       regions.add(Region(identifier: 'com.beacon'));  // Catch all iBeacons.
     }
 
     // Start BLE Scan.
     RangingResult res = await flutterBeacon.ranging(regions).first;
-
     _scanData.timestamp = (DateTime.now().millisecondsSinceEpoch / 1000).round().toString(); // Record timestamp.
 
     res.beacons.forEach((device) {
@@ -283,7 +290,6 @@ class Scanner {
       );
     });
     _scanData.data.sort((a, b) => b.rssi.compareTo(a.rssi));  // Sort by RSSI.
-
     // Send onto Stream
     _controller.add(_scanData);       // Send onto Stream.
 
@@ -300,7 +306,6 @@ class Scanner {
       'count': _scanData.getCount(),
       'payload': _scanData.getPayload(),
     };
-
     // Send POST packet to server.
     //TODO: Catch Exception Properly.
     try {
@@ -314,9 +319,7 @@ class Scanner {
     } catch(e) {
       return false;
     }
-
     return true;
   }
-
 
 }
