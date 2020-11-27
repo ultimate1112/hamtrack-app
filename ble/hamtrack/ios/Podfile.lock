@@ -4,10 +4,6 @@ PODS:
   - Flutter (1.0.0)
   - flutter_beacon (0.3.0):
     - Flutter
-  - flutter_isolate (0.0.1):
-    - Flutter
-  - flutter_local_notifications (0.0.1):
-    - Flutter
   - fluttertoast (0.0.2):
     - Flutter
     - Toast
@@ -23,8 +19,6 @@ DEPENDENCIES:
   - device_info (from `.symlinks/plugins/device_info/ios`)
   - Flutter (from `Flutter`)
   - flutter_beacon (from `.symlinks/plugins/flutter_beacon/ios`)
-  - flutter_isolate (from `.symlinks/plugins/flutter_isolate/ios`)
-  - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
   - fluttertoast (from `.symlinks/plugins/fluttertoast/ios`)
   - permission_handler (from `.symlinks/plugins/permission_handler/ios`)
   - shared_preferences (from `.symlinks/plugins/shared_preferences/ios`)
@@ -41,10 +35,6 @@ EXTERNAL SOURCES:
     :path: Flutter
   flutter_beacon:
     :path: ".symlinks/plugins/flutter_beacon/ios"
-  flutter_isolate:
-    :path: ".symlinks/plugins/flutter_isolate/ios"
-  flutter_local_notifications:
-    :path: ".symlinks/plugins/flutter_local_notifications/ios"
   fluttertoast:
     :path: ".symlinks/plugins/fluttertoast/ios"
   permission_handler:
@@ -58,8 +48,6 @@ SPEC CHECKSUMS:
   device_info: d7d233b645a32c40dfdc212de5cf646ca482f175
   Flutter: 434fef37c0980e73bb6479ef766c45957d4b510c
   flutter_beacon: 2525df9d96b904623f325968a73bac805e648119
-  flutter_isolate: 0edf5081826d071adf21759d1eb10ff5c24503b5
-  flutter_local_notifications: 0c0b1ae97e741e1521e4c1629a459d04b9aec743
   fluttertoast: 6122fa75143e992b1d3470f61000f591a798cc58
   permission_handler: eac8e15b4a1a3fba55b761d19f3f4e6b005d15b6
   shared_preferences: af6bfa751691cdc24be3045c43ec037377ada40d

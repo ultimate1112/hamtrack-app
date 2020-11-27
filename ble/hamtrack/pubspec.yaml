@@ -43,9 +43,6 @@ dependencies:
   # Toast / Alert Messages
   fluttertoast: ^7.1.1
 
-  # Notifications (without Firebase)
-  flutter_local_notifications: ^2.0.1
-
   # Additional functionality to inbuilt Stream.
   rxdart: ^0.24.1
 
